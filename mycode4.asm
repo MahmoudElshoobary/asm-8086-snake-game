@@ -308,10 +308,12 @@ MoveHead:
 
 move_up:
     dec byte ptr [snakeRow[0]]
+    call Delay
     ret
 
 move_down:
     inc byte ptr [snakeRow[0]]
+    call delay
     ret
 
 move_left:
@@ -625,4 +627,26 @@ UpdateLEDScore:
 
     pop dx
     pop ax
+    ret
+
+; =========================================================================
+; Delay
+; =========================================================================    
+    
+Delay:
+    
+    mov ah, 00h
+    int 1Ah
+
+    mov bx, dx
+    add bx, 2
+
+wait_tick:
+
+    mov ah, 00h
+    int 1Ah
+
+    cmp dx, bx
+    jl wait_tick
+
     ret
