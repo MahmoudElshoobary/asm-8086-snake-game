@@ -35,6 +35,8 @@ lastTick    dw 0            ; Stores the system clock tick of the last movement
 
 gameMode    db 0            ; Game Difficulty: 0 = Easy (Wrap around), 1 = Hard (Solid walls)
 
+axisFlip    db 0            ; Variable to balance vertical movement speed
+
 ; Dashboard & Screen UI Strings
 titleMsg    db 'The Snake by M&K'
 titleLen    dw 16
@@ -45,8 +47,8 @@ opt1Len     dw 27
 opt2Msg     db '[2] Hard Mode (Solid Walls)'
 opt2Len     dw 27
 
-loseMsg     db '  YOU LOSE!  '
-msgLength   dw 13
+loseMsg     db '  YOU LOSE! Score: 00  '
+msgLength   dw 23
 
 retryMsg    db 'Press [1] to Try Again'
 retryLength dw 22
@@ -56,7 +58,6 @@ retryLength dw 22
 ; =========================================================================
 start:
     ; Set video mode to 03h (Standard Text Mode, 80 columns x 25 rows)
-    ; This also clears the screen completely.
     mov ax, 0003h     
     int 10h
 
@@ -68,25 +69,23 @@ start:
 ; DISPLAY DASHBOARD (MAIN MENU)
 ; =========================================================================
 show_dashboard:
-    ; 1. Print Game Title centered at Row 6, Col 32 (Light Green text)
-    mov ah, 13h         ; BIOS string printing function
-    mov al, 01h         ; Update cursor position after printing
-    xor bh, bh          ; Video page 0
+    mov ah, 13h         
+    mov al, 01h         
+    xor bh, bh          
     mov bl, 0Ah         ; Light Green attribute
-    mov cx, [titleLen]  ; Length of title string
-    mov dh, 6           ; Row 6
-    mov dl, 32          ; Column 32
+    mov cx, [titleLen]  
+    mov dh, 6           
+    mov dl, 32          
     push cs
-    pop es              ; Set ES to Code Segment where strings are stored
-    lea bp, [titleMsg]  ; Load effective address of string into BP
+    pop es              
+    lea bp, [titleMsg]  
     int 10h             
 
-    ; 2. Print Option 1 (Easy Mode) at Row 10, Col 26 (White text)
     mov ah, 13h         
     mov al, 01h         
     xor bh, bh          
     mov bl, 0Fh         ; Bright White attribute
-    mov cx, [opt1Len] 
+    mov cx, [opt1Len]  
     mov dh, 10          
     mov dl, 26          
     push cs
@@ -94,13 +93,12 @@ show_dashboard:
     lea bp, [opt1Msg]
     int 10h             
 
-    ; 3. Print Option 2 (Hard Mode) at Row 12, Col 26 (White text)
     mov ah, 13h         
     mov al, 01h         
     xor bh, bh          
     mov bl, 0Fh         
-    mov cx, [opt2Len] 
-    mov dh, 12                                                             
+    mov cx, [opt2Len]  
+    mov dh, 12          
     mov dl, 26          
     push cs
     pop es
@@ -108,7 +106,6 @@ show_dashboard:
     int 10h             
 
 wait_for_mode:
-    ; Blocking keyboard read to capture user mode selection
     mov ah, 00h
     int 16h
 
@@ -118,7 +115,7 @@ wait_for_mode:
     cmp al, '2'
     je set_hard_mode
 
-    jmp wait_for_mode   ; Keep waiting if any other key is pressed
+    jmp wait_for_mode   
 
 set_easy_mode:
     mov byte ptr [gameMode], 0
@@ -128,7 +125,6 @@ set_hard_mode:
     mov byte ptr [gameMode], 1
 
 start_game_play:
-    ; Clear the menu screen before entering the actual gameplay loop
     mov ax, 0003h
     int 10h
     mov ax, VIDMEM
@@ -138,75 +134,70 @@ start_game_play:
 ; INITIAL GAME PLAYGROUND STATE
 ; =========================================================================
 init_game_state:
-    ; Reset initial gameplay parameters
     mov byte ptr [snakeLength], 3
     mov byte ptr [direction], RIGHT
     mov byte ptr [grow], 0
     mov byte ptr [appleRow], 8
     mov byte ptr [appleCol], 30
+    mov byte ptr [axisFlip], 0
 
-    ; Reset external emu8086 hardware LED screen to zero
-    call UpdateLEDScore 
+    call UpdateLEDScore     ; ????? ???? ????? ?? ??????? ??? ????? ?????
 
-    ; Setup initial coordinates for Snake Head (Segment 0)
+    ; ?????????? ??????? ????????
     mov snakeRow[0], 10
     mov snakeCol[0], 20
 
-    ; Setup initial coordinates for Snake Body (Segment 1)
     mov snakeRow[1], 10
     mov snakeCol[1], 19
 
-    ; Setup initial coordinates for Snake Tail (Segment 2)
     mov snakeRow[2], 10
     mov snakeCol[2], 18
 
-    ; Render initial frame objects
     call DrawFullSnake
     call DrawApple
 
 ; =========================================================================
-; MAIN GAME LOOP (Executes continuously during gameplay)
+; MAIN GAME LOOP
 ; =========================================================================
 main_loop:
 
-    call ReadInput          ; Check and update direction from keyboard
+    call ReadInput          
 
-    call SaveTail           ; Record the exact position of the tail before moving
+    ; ?????? ???? ??????? (????? ???? ??????? ?????? ?? ??????? ??????? ??? Text Mode)
+    cmp byte ptr [direction], LEFT
+    je proceed_move
+    cmp byte ptr [direction], RIGHT
+    je proceed_move
 
-    call ShiftBody          ; Pass coordinates forward down the body segments
+    xor byte ptr [axisFlip], 1  
+    jz skip_this_frame          ; ????? ??? ????? ?????? ??????
 
-    call MoveHead           ; Advance the snake's head forward based on direction
+proceed_move:
+    call SaveTail           
+    call ShiftBody          
+    call MoveHead           
+    call CheckBorders       
+    call CheckSelfCollision 
+    call CheckApple         
+    call EraseTail          
+    call DrawHead           
+    call DrawApple          
 
-    call CheckBorders       ; Handle boundary checking (Wrap around or Wall crash)
-
-    call CheckSelfCollision ; Ensure the snake hasn't crashed into itself
-
-    call CheckApple         ; Verify if the head collides with an apple
-
-    call EraseTail          ; Clear the snake's oldest trail element from screen
-
-    call DrawHead           ; Draw the new position of the head
-
-    call DrawApple          ; Persist and draw apple graphic onto the screen
-
-    call WaitTick           ; Create game delay based on hardware timer ticks
-
-    jmp main_loop           ; Restart loop sequence
+skip_this_frame:
+    call WaitTick           
+    jmp main_loop           
 
 ; =========================================================================
 ; KEYBOARD INPUT HANDLER
 ; =========================================================================
 ReadInput:
-    ; Non-blocking keyboard status check
     mov ah, 01h
     int 16h
-    jz done_input       ; Exit safely if no key was pressed
+    jz done_input       
 
-    ; Read keystroke code from buffer
     mov ah, 00h
     int 16h
 
-    ; Identify directional arrow keys via scan codes (AH)
     cmp ah, 48h
     je set_up
 
@@ -222,7 +213,6 @@ ReadInput:
     jmp done_input
 
 set_up:
-    ; Prevent immediate reverse disaster (cannot move UP if moving DOWN)
     cmp byte ptr [direction], DOWN  
     je done_input
     mov byte ptr [direction], UP
@@ -252,7 +242,6 @@ done_input:
 ; SAVE OLD TAIL POSITION
 ; =========================================================================
 SaveTail:
-    ; Extract coordinates of the last segment prior to structural shifting
     xor cx, cx
     mov cl, [snakeLength]
     dec cx
@@ -270,7 +259,6 @@ SaveTail:
 ; SHIFT BODY SEGMENTS
 ; =========================================================================
 ShiftBody:
-    ; Iterate backwards from tail down to neck, copying previous coordinates
     xor cx, cx
     mov cl, [snakeLength]
     dec cx
@@ -293,7 +281,6 @@ shift_loop:
 ; MOVE HEAD POSITION
 ; =========================================================================
 MoveHead:
-    ; Modify head index coordinates according to active direction vector
     cmp byte ptr [direction], UP
     je move_up
 
@@ -328,39 +315,35 @@ move_right:
 CheckBorders:
     mov al, [snakeCol[0]]
     
-    ; COLUMN BOUNDARY CHECK (X-Axis limits: 0 - 79)
     cmp al, 80          
-    jae handle_col_border   ; Triggers if Col >= 80 or Col Underflows to 255
+    jae handle_col_border   
     jmp check_rows
 
 handle_col_border:
     cmp byte ptr [gameMode], 1
-    je game_over            ; Instantly crash if Hard Mode is active
+    je game_over            
     
-    ; Easy Mode Wrap-around Logic
     cmp al, 254         
-    jae set_col_max         ; If it went past left side (255), warp to right wall
-    mov byte ptr [snakeCol[0]], 0  ; Else it went past right side, warp to left wall
+    jae set_col_max         
+    mov byte ptr [snakeCol[0]], 0  
     jmp check_rows
 
 set_col_max:
     mov byte ptr [snakeCol[0]], 79
 
 check_rows:
-    ; ROW BOUNDARY CHECK (Y-Axis limits: 0 - 24)
     mov al, [snakeRow[0]]
     cmp al, 25          
-    jae handle_row_border   ; Triggers if Row >= 25 or Row Underflows to 255
+    jae handle_row_border   
     ret
 
 handle_row_border:
     cmp byte ptr [gameMode], 1
-    je game_over            ; Instantly crash if Hard Mode is active
+    je game_over            
     
-    ; Easy Mode Wrap-around Logic
     cmp al, 254         
-    jae set_row_max         ; If it went past top ceiling (255), warp to floor
-    mov byte ptr [snakeRow[0]], 0  ; Else it went past bottom floor, warp to ceiling
+    jae set_row_max         
+    mov byte ptr [snakeRow[0]], 0  
     ret
 
 set_row_max:
@@ -371,7 +354,6 @@ set_row_max:
 ; SELF COLLISION DETECTOR
 ; =========================================================================
 CheckSelfCollision:
-    ; A snake with length less than 4 cannot physically hit its own body
     cmp byte ptr [snakeLength], 4   
     jb done_collision
 
@@ -379,16 +361,16 @@ CheckSelfCollision:
     mov cl, [snakeLength]
     dec cx                         
 
-    mov si, 1               ; Start scanning from body segment index 1 (neck)
+    mov si, 1               
 
 collision_loop:
     mov al, snakeRow[0]
     cmp al, snakeRow[si]
-    jne next_segment        ; If row does not match, proceed to next chunk
+    jne next_segment        
 
     mov al, snakeCol[0]
     cmp al, snakeCol[si]
-    je game_over            ; If BOTH row and column match, head hit body!
+    je game_over            
 
 next_segment:
     inc si
@@ -401,24 +383,35 @@ done_collision:
 ; GAME OVER & RETRY MANAGER
 ; =========================================================================
 game_over:
-    ; 1. Draw "YOU LOSE!" container at Row 11, Col 33 (White on Red text)
+    xor ax, ax
+    mov al, [snakeLength]
+    sub al, 3
+
+    mov bl, 10
+    div bl              
+    
+    add al, '0'         
+    mov [loseMsg + 20], al 
+    
+    add ah, '0'         
+    mov [loseMsg + 21], ah 
+
     mov ah, 13h         
     mov al, 01h         
     xor bh, bh          
-    mov bl, 4Fh         ; White text on Red background
+    mov bl, 4Fh         
     mov cx, [msgLength] 
     mov dh, 11          
-    mov dl, 33          
+    mov dl, 28          
     push cs
     pop es
     lea bp, [loseMsg]
     int 10h             
 
-    ; 2. Draw "Press [1] to Try Again" at Row 13, Col 29 (White on Black text)
     mov ah, 13h         
     mov al, 01h         
     xor bh, bh          
-    mov bl, 0Fh         ; Normal white text
+    mov bl, 0Fh         
     mov cx, [retryLength] 
     mov dh, 13          
     mov dl, 29          
@@ -428,14 +421,12 @@ game_over:
     int 10h             
 
 wait_for_one:
-    ; Halt execution in loop awaiting key '1' to confirm reset
     mov ah, 00h
     int 16h
     cmp al, '1'         
     jne wait_for_one    
 
 restart_to_dashboard:
-    ; Clean state transition back to Main Menu Dashboard
     jmp start 
 
 ; =========================================================================
@@ -450,14 +441,12 @@ CheckApple:
     cmp al, [appleCol]
     jne no_apple
 
-    ; Action taken when Head matches Apple coordinates:
-    inc byte ptr [snakeLength]  ; Grow snake configuration
+    inc byte ptr [snakeLength]  
     
-    call UpdateLEDScore         ; Push updated score values to emu8086 LED panel
+    call UpdateLEDScore         ; ????? ???? ????? ???????? ??? ??? ??? ???????
 
-    mov byte ptr [grow], 1      ; Block tail erasing routine for this turn
+    mov byte ptr [grow], 1      
 
-    ; Assign last segment coordinates immediately to prevent trailing artifacts
     xor cx, cx
     mov cl, [snakeLength]
     dec cx
@@ -468,7 +457,7 @@ CheckApple:
     mov al, [tailCol]
     mov snakeCol[si], al
 
-    call SpawnApple             ; Drop a brand new random apple
+    call SpawnApple             
 
 no_apple:
     ret
@@ -477,46 +466,44 @@ no_apple:
 ; RANDOM APPLE GENERATOR
 ; =========================================================================
 SpawnApple:
-    ; Generate random column component using system clock ticks (0 to 79)
     mov ah, 00h
-    int 1Ah             ; Get ticks since midnight into DX
+    int 1Ah             
     mov ax, dx
     xor dx, dx
     mov bx, 80
-    div bx              ; Divide AX by 80, remainder falls in DX (0-79)
+    div bx              
     mov [appleCol], dl
 
-    ; Generate random row component using system clock ticks (0 to 24)
     mov ah, 00h
     int 1Ah             
     mov ax, dx
     xor dx, dx
     mov bx, 25
-    div bx              ; Divide AX by 25, remainder falls in DX (0-24)
+    div bx              
     mov [appleRow], dl
 
     ret
 
 ; =========================================================================
-; TRAIL CLEANER (ERASE TAIL FROM SCREEN)
+; TRAIL CLEANER
 ; =========================================================================
 EraseTail:
     cmp byte ptr [grow], 1
-    je skip_erase       ; Bypass erasing if growth flag is tripped
+    je skip_erase       
 
     mov al, [tailRow]
     mov bl, [tailCol]
 
-    call CalculateOffset ; Fetch target memory address inside screen space
+    call CalculateOffset 
 
-    mov al, ' '         ; Erase character (ASCII space)
-    mov ah, 07h         ; Default text attributes (Light grey)
+    mov al, ' '         
+    mov ah, 07h         
 
-    mov es:[di], ax      ; Clear character directly in VRAM
+    mov es:[di], ax      
     ret
 
 skip_erase:
-    mov byte ptr [grow], 0 ; Clear flag for subsequent standard cycles
+    mov byte ptr [grow], 0 
     ret
 
 ; =========================================================================
@@ -528,14 +515,14 @@ DrawHead:
 
     call CalculateOffset
 
-    mov al, 219         ; Complete solid square ASCII block
-    mov ah, 0Ah         ; Bright Green text color
+    mov al, 219         
+    mov ah, 0Ah         
 
-    mov es:[di], ax      ; Commit to Video Memory
+    mov es:[di], ax      
     ret
 
 ; =========================================================================
-; DRAW ENTIRE INITIAL SNAKE STRUCTURE
+; DRAW ENTIRE SNAKE STRUCTURE
 ; =========================================================================
 DrawFullSnake:
     xor cx, cx
@@ -567,16 +554,14 @@ DrawApple:
 
     call CalculateOffset
 
-    mov al, '@'         ; Apple display glyph symbol
-    mov ah, 0Ch         ; Bright Red text attribute color
+    mov al, '@'         
+    mov ah, 0Ch         
 
-    mov es:[di], ax      ; Render onto screen buffer
+    mov es:[di], ax      
     ret
 
 ; =========================================================================
 ; CALCULATE MEMORY OFFSET FROM COORDINATES
-; Formula: Offset = (Row * 160) + (Col * 2)
-; Input: AL = Row, BL = Column | Output: DI = Calculated Offset
 ; =========================================================================
 CalculateOffset:
     push ax
@@ -584,29 +569,32 @@ CalculateOffset:
 
     xor ah, ah
     mov bh, 160
-    mul bh              ; AX = Row * 160
-    mov di, ax          ; Move partial sum into Destination Index
+    mul bh              
+    mov di, ax          
 
     xor ax, ax
     mov al, bl
-    shl ax, 1           ; AX = Column * 2 (Shift Left 1 is equivalent to multiplying by 2)
-    add di, ax          ; Add to final VRAM Offset pointer
+    shl ax, 1           
+    add di, ax          
 
     pop bx
     pop ax
     ret
 
 ; =========================================================================
-; HARDWARE DELAY ENGINE (CLOCK TICK SYNC)
+; HARDWARE DELAY ENGINE
 ; =========================================================================
 WaitTick:
     mov ah, 00h
-    int 1Ah             ; Read BIOS system timer counter
+    int 1Ah             
 
+wait_loop:
+    mov ah, 00h
+    int 1Ah
     cmp dx, [lastTick]
-    je WaitTick         ; Continuous loop until clock tick shifts forward
+    je wait_loop        
 
-    mov [lastTick], dx  ; Save current time stamp anchor for next tick
+    mov [lastTick], dx  
     ret
 
 ; =========================================================================
@@ -618,10 +606,10 @@ UpdateLEDScore:
 
     xor ax, ax
     mov al, [snakeLength]
-    sub al, 3           ; Calculate active Score (Apples Eaten = Total Length - 3)
+    sub al, 3           
 
-    mov dx, 199         ; Virtual Hardware I/O Register Port Address for emu8086 LED Panel
-    out dx, ax          ; Output score value directly to external device register
+    mov dx, 199         ; ????? ?????? ??? Port 199 ????? ?????? ?? emu8086
+    out dx, ax          
 
     pop dx
     pop ax
