@@ -152,4 +152,4 @@ The snake is stored as two parallel byte arrays (`snakeRow` and `snakeCol`), eac
 
 ## 📄 License
 
-This project is open source and available under the [MIT License](LICENSE).
+This project is open source and available under the [MIT License](https://en.wikipedia.org/wiki/MIT_License).
