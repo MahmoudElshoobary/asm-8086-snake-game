@@ -665,5 +665,3 @@ wait_tick:
     jl wait_tick
 
     ret
-
-
