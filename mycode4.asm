@@ -45,8 +45,8 @@ opt1Len     dw 27
 opt2Msg     db '[2] Hard Mode (Solid Walls)'
 opt2Len     dw 27
 
-loseMsg     db '  YOU LOSE!  '
-msgLength   dw 13
+loseMsg     db '  YOU LOSE! Score: 00  '
+msgLength   dw 23
 
 retryMsg    db 'Press [1] to Try Again'
 retryLength dw 22
@@ -308,12 +308,12 @@ MoveHead:
 
 move_up:
     dec byte ptr [snakeRow[0]]
-    call Delay
+    call WaitTick
     ret
 
 move_down:
     inc byte ptr [snakeRow[0]]
-    call delay
+    call WaitTick
     ret
 
 move_left:
@@ -404,13 +404,28 @@ done_collision:
 ; =========================================================================
 game_over:
     ; 1. Draw "YOU LOSE!" container at Row 11, Col 33 (White on Red text)
+    
+    xor ax, ax
+    mov al, [snakeLength]
+    sub al, 3
+
+    mov bl, 10
+    div bl              
+    
+    add al, '0'         
+    mov [loseMsg + 20], al 
+    
+    add ah, '0'         
+    mov [loseMsg + 21], ah 
+    
+    
     mov ah, 13h         
     mov al, 01h         
     xor bh, bh          
     mov bl, 4Fh         ; White text on Red background
     mov cx, [msgLength] 
     mov dh, 11          
-    mov dl, 33          
+    mov dl, 28          
     push cs
     pop es
     lea bp, [loseMsg]
@@ -627,6 +642,28 @@ UpdateLEDScore:
 
     pop dx
     pop ax
+    ret 
+    
+; =========================================================================
+; Delay
+; =========================================================================    
+    
+Delay:
+    
+    mov ah, 00h
+    int 1Ah
+
+    mov bx, dx
+    add bx, 2
+
+wait_tick:
+
+    mov ah, 00h
+    int 1Ah
+
+    cmp dx, bx
+    jl wait_tick
+
     ret
 
 ; =========================================================================
