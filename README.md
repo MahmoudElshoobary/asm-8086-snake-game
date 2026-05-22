@@ -6,16 +6,11 @@ A fully playable Snake game written in **x86 16-bit Assembly**, built for the [e
 
 ## 📸 Preview
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                                                              │
-│                    The Snake by M&K                          │
-│                                                              │
-│               [1] Easy Mode (Wrap Around)                    │
-│               [2] Hard Mode (Solid Walls)                    │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
+<div align="center">
+
+![Gameplay Demo](assets/ScreenRecording2026-05-22180317-ezgif.com-video-to-gif-converter.gif)
+
+</div>
 
 ---
 
